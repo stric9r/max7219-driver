@@ -133,15 +133,16 @@ enum max7219_display_tests
 #define ADDR_MODE         0x0C
 #define ADDR_DISPLAY_TEST 0x0F
 
-//
-void max7219_init(void(*f_write)(int,int),
-                    void(*f_delay_us)(unsigned int),
-                    uint8_t const data_out,
-                    uint8_t const clk, 
-                    uint8_t const load,
-                    uint8_t const decode_mode,
-                    enum max7219_intensities const intensity,
-                    enum max7219_scan_limits const scan_limit);
+//Initialize routines
+void max7219_init(void(*f_write_gpio)(int,int),
+                  void(*f_write_serial)(int),
+                  void(*f_delay_us)(unsigned int),
+                  uint8_t const data_out,
+                  uint8_t const clk, 
+                  uint8_t const load,
+                  uint8_t const decode_mode,
+                  enum max7219_intensities const intensity,
+                  enum max7219_scan_limits const scan_limit);
 
 // General control
 void max7219_set_digit_bcd(enum max7219_digits const digit, uint8_t bcd, bool const decimal_point);

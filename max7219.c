@@ -11,11 +11,13 @@ static uint8_t digits_segment_store[DIGIT_MAX];
 
 struct comm_str
 {
-    void(*f_write)(int,int);
+    void(*f_write_gpio)(int,int);
+    void(*f_write_serial)(int);
     void(*f_delay_us)(unsigned int);
     uint8_t data_out;
     uint8_t clk;
     uint8_t load;
+    bool is_serial;
 };
 
 static struct comm_str comm;
@@ -62,27 +64,34 @@ uint8_t get_digit_addr(enum max7219_digits const digit)
 }
 
 /// Setup the pins and write function pointer
+///
+/// Note that if f_write_serial is NULL, then the interface will
+/// bit bang.
 /// 
 /// When needed to change control settings, it is easier to just call init again.
-void max7219_init(void(*f_write)(int,int),
-                    void(*f_delay_us)(unsigned int),
-                    uint8_t const data_out_pin,
-                    uint8_t const clk_pin, 
-                    uint8_t const load_pin,
-                    uint8_t const decode_mode,
-                    enum max7219_intensities const intensity,
-                    enum max7219_scan_limits const scan_limit)
+void max7219_init_bit(void(*f_write_gpio)(int,int),    //< Func ptr to write to gpio pin, and value 0,1
+                      void(*f_write_serial)(int),      //< Func ptr to wrtie to serial interface, like spi_write(data)
+                      void(*f_delay_us)(unsigned int), //< Func ptr to delay by specified micro seconds
+                      uint8_t const data_out_pin,      //< Gpio for data pin
+                      uint8_t const clk_pin,           //< Gpio for clock pin
+                      uint8_t const load_pin,          //< Gpio for load pin
+                      uint8_t const decode_mode,       //< The decode mode to use
+                      enum max7219_intensities const intensity,  //< Led intensity
+                      enum max7219_scan_limits const scan_limit) //< Scan limit, how many segments
 {
-    comm.f_write = f_write;
+    comm.is_serial = f_write_serial != NULL;
+
+    comm.f_write_gpio = f_write_gpio;
+    comm.f_write_serial = f_write_serial;
     comm.f_delay_us = f_delay_us;
     comm.data_out = data_out_pin;
     comm.clk = clk_pin;
     comm.load = load_pin;
 
     // set it all to 0
-    comm.f_write(comm.data_out, 0);
-    comm.f_write(comm.clk, 0);
-    comm.f_write(comm.load, 0);
+    comm.f_write_gpio(comm.data_out, 0);
+    comm.f_write_gpio(comm.clk, 0);
+    comm.f_write_gpio(comm.load, 0);
 
     decode_mode_store = 0;
 
@@ -117,6 +126,7 @@ void max7219_set_digit_bcd(enum max7219_digits const digit, uint8_t bcd, bool co
     max7219_write(addr, bcd);
 }
 
+/// Set only one segment in a digit
 void max7219_set_digit_segment(enum max7219_digits const digit, 
                                enum max7219_segments segment, 
                                bool state)
@@ -229,16 +239,17 @@ void max7219_set_mode(enum max7219_modes const mode)
 /// This is blocking
 void max7219_write(uint8_t const  addr, uint8_t const  data)
 {
-    if(comm.f_write != NULL && comm.f_delay_us != NULL)
+    //Bit bang!
+    if(!comm.is_serial && comm.f_write_gpio != NULL && comm.f_delay_us != NULL)
     {
         //only 16 bits
         uint8_t const packet[2] = {addr, data};
 
         // load line low to push data into register
         // bit 15 to 0
-        comm.f_write(comm.load, 0);
+        comm.f_write_gpio(comm.load, 0);
         
-        comm.f_write(comm.clk, 0);
+        comm.f_write_gpio(comm.clk, 0);
         comm.f_delay_us(CLK_WIDTH_US);
 
         /// MSB first which is address (just stored differently here for ease)
@@ -247,29 +258,38 @@ void max7219_write(uint8_t const  addr, uint8_t const  data)
             // loop through bits and toggle clk, msb first
             for(int8_t j = 7; j >= 0; j--)
             {
-                comm.f_write(comm.clk, 0);
+                comm.f_write_gpio(comm.clk, 0);
                 comm.f_delay_us(CLK_WIDTH_US);
                 
                 uint8_t bit = (packet[i] >> j) & 0x01;
-                comm.f_write(comm.data_out, bit);
+                comm.f_write_gpio(comm.data_out, bit);
                 
                 comm.f_delay_us(50); //give it a little extra to be set
-                                      //litle buggy when the rising edges happen at same time.
+                                     //little buggy when the rising edges happen at same time.
 
-                comm.f_write(comm.clk, 1); // data shifted on rising edge of clock
+                comm.f_write_gpio(comm.clk, 1); // data shifted on rising edge of clock
                 comm.f_delay_us(CLK_WIDTH_US);
             }
         }
 
-        comm.f_write(comm.load, 1); // load data into chip 
-                                    // load is not depended on clock in MAX7219
+        comm.f_write_gpio(comm.load, 1); // load data into chip 
+                                         // load is not depended on clock in MAX7219
         comm.f_delay_us(CLK_WIDTH_US);
 
         //clean up
-        comm.f_write(comm.data_out, 0);
-        comm.f_write(comm.load, 0);
-        comm.f_write(comm.clk, 0); 
-        
+        comm.f_write_gpio(comm.data_out, 0);
+        comm.f_write_gpio(comm.load, 0);
+        comm.f_write_gpio(comm.clk, 0); 
+    }
+    else if(comm.is_serial && comm.f_write_serial != NULL && comm.f_write_gpio != NULL)
+    {
+        comm.f_write_gpio(comm.load, 0); // load data into chip 
 
+        // Just use the hardware's interface to write out data
+        // Think of this as spi_write(addr)...etc.
+        comm.f_write_serial(addr);
+        comm.f_write_serial(data);
+
+        comm.f_write_gpio(comm.load, 1); // load data into chip 
     }
 }
