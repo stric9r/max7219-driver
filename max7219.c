@@ -283,7 +283,7 @@ void max7219_write(uint8_t const  addr, uint8_t const  data)
     }
     else if(comm.is_serial && comm.f_write_serial != NULL && comm.f_write_gpio != NULL)
     {
-        comm.f_write_gpio(comm.load, 0); // load data into chip 
+        comm.f_write_gpio(comm.load, 0); // clear load flag 
 
         // Just use the hardware's interface to write out data
         // Think of this as spi_write(addr)...etc.
