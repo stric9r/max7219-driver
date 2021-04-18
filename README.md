@@ -2,7 +2,7 @@
 Serially interfaced 8 digit LED display driver
 
 The implementation of this is with GPIO only, bit banging the chip instead of relying on a serial interface.
-It can be easily modified to use a serial interface if required.
+There is a branch open now that has the ability to use SPI, but it is untested.  
 
 ## General
 This driver is for the max7219 serial display driver.  See datasheet in this repository for more details of how the chip functions.
